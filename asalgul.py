@@ -44,7 +44,7 @@ with tab1:
 
     if selected_items:
         st.divider()
-        phone = st.text_input("📞 Телефонуңуз (мисалы: 0700123456):")
+        phone = st.text_input("📞 Телефонуңуз:")
         address = st.text_input("📍 Стол № же Дарек:")
         if st.button("✅ Заказды жөнөтүү", use_container_width=True):
             if phone and address:
@@ -53,8 +53,7 @@ with tab1:
                     "phone": phone,
                     "address": address,
                     "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
-                    "status": "Жаңы 🟢",
-                    "timestamp": datetime.now() # Иреттөө үчүн кошулду
+                    "status": "Даярдалып жатат 👨‍🍳" # Баштапкы статус
                 })
                 st.success("Заказыңыз кабыл алынды!")
             else:
@@ -65,15 +64,22 @@ with tab2:
     st.header("🔍 Заказыңыздын абалы")
     search_phone = st.text_input("Катталган номериңизди жазыңыз:", key="search_pt")
     if search_phone:
-        # Ката чыкпашы үчүн 'order_by' алынып салынды, код Python ичинде иреттейт
         results = db.collection("orders").where("phone", "==", search_phone).stream()
         order_data = [res.to_dict() for res in results]
         
         if order_data:
-            # Акыркы заказдарды жогору чыгаруу
             order_data.sort(key=lambda x: x.get('time', ''), reverse=True)
-            for d in order_data[:5]:
-                st.info(f"⏰ {d['time']} | Статус: **{d['status']}** \n\n Заказ: {d['items']}")
+            for d in order_data[:3]:
+                st.divider()
+                # Статуска жараша жазууну өзгөртүү
+                if d['status'] == "Даяр 🥗":
+                    st.balloons()
+                    st.success(f"✅ **Заказыңыз даяр болду! Ашыңыз таттуу болсун!**")
+                else:
+                    st.warning(f"⏳ **Заказыңыз даярдалып жатат... Бир аз күтө туруңуз.**")
+                
+                st.write(f"⏰ Убактысы: {d['time']}")
+                st.write(f"🍴 Заказ: {d['items']}")
         else:
             st.warning("Бул номер менен заказ табылган жок.")
 
@@ -86,7 +92,7 @@ with tab3:
         admin_tab1, admin_tab2 = st.tabs(["📥 Заказдарды башкаруу", "🍴 Менюну башкаруу"])
         
         with admin_tab1:
-            st.subheader("Жаңы заказдар")
+            st.subheader("Келген заказдар")
             orders = db.collection("orders").stream()
             order_list = [o.to_dict() | {"id": o.id} for o in orders]
             order_list.sort(key=lambda x: x.get('time', ''), reverse=True)
@@ -96,35 +102,37 @@ with tab3:
                 with st.expander(f"{d['time']} | Тел: {d['phone']} | {d['status']}"):
                     st.write(f"**Заказ:** {d['items']}")
                     st.write(f"**Дарек:** {d['address']}")
-                    new_status = st.selectbox("Статус:", 
-                                             ["Жаңы 🟢", "Даярдалууда 👨‍🍳", "Жолдо 🚚", "Бүттү ✅", "Жокко чыгарылды ❌"], 
-                                             key=f"st_{doc_id}")
-                    if st.button("Статусту жаңыртуу", key=f"upd_{doc_id}"):
-                        db.collection("orders").document(doc_id).update({"status": new_status})
-                        st.rerun()
-                    if st.button("Өчүрүү", key=f"del_ord_{doc_id}"):
-                        db.collection("orders").document(doc_id).delete()
-                        st.rerun()
+                    
+                    # Сатуучу үчүн "Даяр" баскычы
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("🥗 ДАЯР БОЛДУ", key=f"ready_{doc_id}"):
+                            db.collection("orders").document(doc_id).update({"status": "Даяр 🥗"})
+                            st.rerun()
+                    with col2:
+                        if st.button("❌ Өчүрүү", key=f"del_ord_{doc_id}"):
+                            db.collection("orders").document(doc_id).delete()
+                            st.rerun()
 
         with admin_tab2:
-            st.subheader("Жаңы тамак кошуу")
+            st.subheader("Менюну башкаруу")
+            # (Меню кошуу коддору мурункудай калат...)
             new_name = st.text_input("Тамактын аты:")
             new_price = st.number_input("Баасы (сом):", min_value=0)
-            new_img = st.text_input("Сүрөттүн шилтемеси (URL):")
-            if st.button("➕ Менюга кош"):
-                if new_name and new_price > 0:
-                    db.collection("menu").add({"name": new_name, "price": new_price, "img": new_img if new_img else "https://via.placeholder.com/150"})
-                    st.success(f"{new_name} кошулду!")
+            new_img = st.text_input("Сүрөт URL:")
+            if st.button("➕ Кош"):
+                db.collection("menu").add({"name": new_name, "price": new_price, "img": new_img})
+                st.rerun()
+            
+            st.divider()
+            m_items = db.collection("menu").stream()
+            for m in m_items:
+                md = m.to_dict()
+                c1, c2 = st.columns([3, 1])
+                c1.write(f"{md['name']} - {md['price']} сом")
+                if c2.button("Өчүрүү", key=f"m_del_{m.id}"):
+                    db.collection("menu").document(m.id).delete()
                     st.rerun()
 
-            st.divider()
-            current_menu = db.collection("menu").stream()
-            for m in current_menu:
-                m_data = m.to_dict()
-                m_id = m.id
-                col1, col2 = st.columns([3, 1])
-                with col1: st.write(f"**{m_data['name']}** - {m_data['price']} сом")
-                with col2:
-                    if st.button("Өчүрүү", key=f"del_m_{m_id}"):
-                        db.collection("menu").document(m_id).delete()
-                        st.rerun()
+
+
